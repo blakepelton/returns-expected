@@ -235,9 +235,11 @@
         const cfInputs = document.querySelectorAll('.cf-input');
 
         cfInputs.forEach((input, index) => {
-            const year = index + 1;
-            // Formula: FV = PV * (1 + r)^n
-            const adjustedCf = baseCf * Math.pow(1 + inflation, year);
+            // Using (index) instead of (index + 1)
+            // This ensures Year 1 (index 0) exponent is 0 -> No adjustment
+            // Year 2 (index 1) exponent is 1 -> 1 year of compounding
+            const exponent = index;
+            const adjustedCf = baseCf * Math.pow(1 + inflation, exponent);
             input.value = adjustedCf.toFixed(0);
         });
     }
