@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bond Ladder Constructor (Inflation Adjusted)</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #dee2e6;
+            --primary-color: #0056b3;
+            --primary-hover: #004494;
+            --accent-color: #e9ecef;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        h1, h2 {
+            text-align: center;
+            color: var(--primary-color);
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-color);
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        input[type="number"] {
+            padding: 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            width: 75px;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            table-layout: fixed;
+        }
+
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: var(--accent-color);
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        .yield-input, .cf-input {
+            width: 65px !important;
+        }
+
+        .results-container {
+            margin-top: 20px;
+        }
+
+        .total-row {
+            font-weight: bold;
+            background-color: #f1f8ff;
+        }
+
+        .small-label {
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Bond Ladder Constructor</h1>
+    
+    <div class="card">
+        <div class="controls">
+            <div class="control-group">
+                <span class="small-label">Ladder Length (Years):</span>
+                <div class="input-wrapper">
+                    <input type="number" id="years-input" value="10" min="1" max="30">
+                    <button onclick="generateTable()">Set</button>
+                </div>
+            </div>
+
+            <div class="control-group" style="flex-direction: column; align-items: stretch;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span class="small-label">Base Cash Flow ($):</span>
+                    <input type="number" id="global-cf" value="10000" step="1000">
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <span class="small-label">Expected Inflation (%):</span>
+                    <input type="number" id="inflation-rate" value="2.5" step="0.1">
+                </div>
+                <button onclick="fillCashFlowsWithInflation()">Apply with Inflation Adjustment</button>
+            </div>
+        </div>
+
+        <table id="input-table">
+            <thead>
+                <tr>
+                    <th style="width: 20%;">Year</th>
+                    <th style="width: 35%;">Yield (YTM)</th>
+                    <th style="width: 45%;">Target Cash Flow</th>
+                </tr>
+            </thead>
+            <tbody id="input-body">
+                </tbody>
+        </table>
+        
+        <button onclick="calculateLadders()" style="width: 100%; padding: 12px; font-size: 16px; margin-top: 10px;">Generate Ladder</button>
+    </div>
+
+    <div class="results-container" id="results-container" style="display: none;">
+        <div class="card">
+            <h2>Cash Flow Matching Results</h2>
+            <p style="font-size: 0.85em; color: #666; text-align: center; margin-bottom: 15px;">
+                Calculated principal per maturity to hit annual targets.
+            </p>
+            <table id="cfm-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Maturity</th>
+                        <th style="width: 60%;">Principal to Invest</th>
+                    </tr>
+                </thead>
+                <tbody id="cfm-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const formatter = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        generateTable();
+    });
+
+    function generateTable() {
+        const years = parseInt(document.getElementById('years-input').value) || 10;
+        const tbody = document.getElementById('input-body');
+        
+        let existingData = [];
+        document.querySelectorAll('.yield-input').forEach((el, i) => {
+            existingData[i] = {
+                yield: el.value,
+                cf: document.querySelectorAll('.cf-input')[i].value
+            };
+        });
+
+        tbody.innerHTML = '';
+
+        for (let i = 1; i <= years; i++) {
+            const tr = document.createElement('tr');
+            const savedYield = existingData[i-1] ? existingData[i-1].yield : (4.00 + (i * 0.05)).toFixed(2);
+            const savedCF = existingData[i-1] ? existingData[i-1].cf : 10000;
+
+            tr.innerHTML = `
+                <td>${i}</td>
+                <td><input type="number" class="yield-input" step="0.01" value="${savedYield}">%</td>
+                <td>$<input type="number" class="cf-input" step="100" value="${savedCF}"></td>
+            `;
+            tbody.appendChild(tr);
+        }
+    }
+
+    function fillCashFlowsWithInflation() {
+        const baseCf = parseFloat(document.getElementById('global-cf').value);
+        const inflation = parseFloat(document.getElementById('inflation-rate').value) / 100;
+        const cfInputs = document.querySelectorAll('.cf-input');
+
+        cfInputs.forEach((input, index) => {
+            const year = index + 1;
+            // Formula: FV = PV * (1 + r)^n
+            const adjustedCf = baseCf * Math.pow(1 + inflation, year);
+            input.value = adjustedCf.toFixed(0);
+        });
+    }
+
+    function calculateLadders() {
+        const rows = document.querySelectorAll('#input-body tr');
+        let data = [];
+        
+        rows.forEach((row, index) => {
+            const yieldVal = parseFloat(row.querySelector('.yield-input').value) / 100;
+            const cfVal = parseFloat(row.querySelector('.cf-input').value);
+            data.push({ year: index + 1, yield: yieldVal, cf: cfVal });
+        });
+
+        const N = data.length;
+        let principalCFM = new Array(N).fill(0);
+        
+        for (let i = N - 1; i >= 0; i--) {
+            let couponsFromLongerBonds = 0;
+            for (let j = i + 1; j < N; j++) {
+                couponsFromLongerBonds += principalCFM[j] * data[j].yield;
+            }
+            let remainingNeeded = data[i].cf - couponsFromLongerBonds;
+            let principalNeeded = remainingNeeded / (1 + data[i].yield);
+            principalCFM[i] = Math.max(0, principalNeeded); 
+        }
+
+        renderResults(principalCFM, N);
+    }
+
+    function renderResults(cfm, years) {
+        document.getElementById('results-container').style.display = 'block';
+        const cfmBody = document.getElementById('cfm-body');
+        cfmBody.innerHTML = '';
+        let totalCost = 0;
+
+        for (let i = 0; i < years; i++) {
+            totalCost += cfm[i];
+            cfmBody.innerHTML += `
+                <tr>
+                    <td>Year ${i + 1}</td>
+                    <td>${formatter.format(cfm[i])}</td>
+                </tr>
+            `;
+        }
+
+        cfmBody.innerHTML += `
+            <tr class="total-row">
+                <td>Total Cost</td>
+                <td>${formatter.format(totalCost)}</td>
+            </tr>
+        `;
+    }
+</script>
+
+</body>
+</html>
